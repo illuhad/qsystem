@@ -92,20 +92,20 @@ class uri_accessor:
       except:
         pass
       return False
-      
+
     def extract_listing(query_result):
       return query_result[1]
       
 
   def __init__(self,
                uri,
-               qsystem,
+               uri_root,
                permissions):
     self._getter = self._ungettable
     self._setter = self._unsettable
     self._attribute_setter = None
 
-    self._queue_system = qsystem
+    self._uri_root = uri_root
     self._parse(uri, permissions)
 
 
@@ -113,7 +113,17 @@ class uri_accessor:
     return self._getter(permissions)
 
   def write(self, value, permissions):
-    self._setter(value, permissions)
+    current_value = self.read(permissions)
+    current_type = type(current_value)
+
+    new_value = current_value
+    if current_type == bool and type(value) == str:
+      if value == "False" or "false":
+        new_value = False
+      else:
+        new_value = True
+    
+    self._setter(new_value, permissions)
 
   def _unsettable(self, value, permissions):
     raise RuntimeError("The specified URI cannot be written.")
@@ -126,7 +136,7 @@ class uri_accessor:
 
   def _parse_system_uri(self, uri_parts, permissions):
     # Start at the root
-    current_node = self._queue_system
+    current_node = self._uri_root
     
     for i, part in enumerate(uri_parts):
       part = part.strip()

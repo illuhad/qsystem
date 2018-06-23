@@ -42,6 +42,7 @@ class job_data:
   NAME = "name"
   STDOUT_FILE = "stdout_file"
   STDERR_FILE = "stderr_file"
+  PRIORITY = "priority"
 
   displayed_names = {
     ID: "job id",
@@ -54,7 +55,8 @@ class job_data:
     ENV: "shell environment",
     NAME: "job name",
     STDOUT_FILE: "stdout file",
-    STDERR_FILE: "stderr file"
+    STDERR_FILE: "stderr file",
+    PRIORITY: "priority"
   }
 
 
@@ -73,7 +75,8 @@ class job_data:
     ENV: {},
     NAME: "<unnamed-%J>",
     STDOUT_FILE: "stdout_job.%J",
-    STDERR_FILE: "stderr_job.%J"
+    STDERR_FILE: "stderr_job.%J",
+    PRIORITY: 1
   }
   
   # Fields that are allowed to be set by the client
@@ -84,14 +87,16 @@ class job_data:
     ENV,
     NAME,
     STDOUT_FILE,
-    STDERR_FILE
+    STDERR_FILE,
+    PRIORITY
   ])
 
   # Fields that are allowed to be changed by the client
   # after the submission
   client_modifyable_values = set([
     STDOUT_FILE,
-    STDERR_FILE
+    STDERR_FILE,
+    PRIORITY
   ])
 
 
@@ -174,9 +179,15 @@ class job(uri_node):
 
   # Returns a list that contains the available URI attributes of this node
   def uri_node_attributes(self, permissions):
-    return self._data.get().keys()
+    data_attributes = list(self._data.get().keys())
+    data_attributes.append("wait_time")
+    return data_attributes
+    
 
   def read_uri_attribute(self, name, permissions):
+    if name == "wait_time":
+      return self.get_wait_time()
+
     if not name in self._data.get():
       raise uri_exception_no_such_attribute()
 
@@ -193,6 +204,9 @@ class job(uri_node):
 
   def write_uri_attribute(self, name, value, permissions):
     
+    if name == "wait_time":
+      raise uri_exception_read_only
+
     if not name in self._data.get():
       raise uri_exception_no_such_attribute()
 
@@ -223,6 +237,15 @@ class job(uri_node):
   def get_working_directory(self):
     return self._data.get_field(job_data.DIR)
   
+  def get_priority(self):
+    return self._data.get_field(job_data.PRIORITY)
+
+  def get_wait_time(self):
+    
+    delta = datetime.datetime.now() - self._data.get_field(job_data.SUBMISSION_DATE)
+    if self.is_running():
+      delta = self._data.get_field(job_data.START_DATE) - self._data.get_field(job_data.SUBMISSION_DATE)
+    return delta.total_seconds()
 
   def _format_string(self, s):
     formatted = s.replace("%J", str(self.get_id()))
@@ -312,17 +335,29 @@ class queue_worker(uri_node):
       jobs_by_name[j.get_name()] = j
     by_id = uri_directory(jobs_by_id)
     by_name = uri_directory(jobs_by_name)
-    return {"jobs" : uri_directory({"by-name" : by_name, "by-id" : by_id})}
+
+    result = {
+      "jobs": uri_directory({"by-name": by_name, "by-id": by_id})
+    }
+
+    # TODO if number of waiting jobs > 1
+    if len(self._jobs) > 1:
+      result["next-job"] = self._jobs[self._find_next_job_for_execution()]
+
+    return result
 
   # Returns a list that contains the available URI attributes of this node
   def uri_node_attributes(self, permissions):
-    return ["num_jobs", "running"]
+    return ["num_received_jobs", "running", "num_enqueued_jobs"]
 
   def read_uri_attribute(self, name, permissions):
     try:
       self._lock.acquire()
-      if name == "num_jobs":
+      if name == "num_received_jobs":
         return self._num_jobs
+
+      if name == "num_enqueued_jobs":
+        return len(self._jobs)
 
       if name == "running":
         return self._run
@@ -427,20 +462,30 @@ class queue_worker(uri_node):
   
   def is_running(self):
     return self._run
+
+  def _job_score(self, j):
+    if j.is_running():
+      return float("-inf")
+    return j.get_priority() * j.get_wait_time()
+
+  def _find_next_job_for_execution(self):
+    return self._jobs.index(max(self._jobs, key = lambda j : self._job_score(j)))
+
     
   def main_loop(self):
     print("Entering main batch processing loop...")
     while self._run:
       if len(self._jobs) > 0:
+        next_job_index = self._find_next_job_for_execution()
         try:
-          self._jobs[0].run()
+          self._jobs[next_job_index].run()
         except Exception as e:
           print("An exception occured during the execution of job",self._jobs[0].get_id(),":",e)
         finally:
           # Do not put that inside the try, because
           # the job must always be removed from the queue after it was attempted to execute it
           self._lock.acquire()
-          j = self._jobs.pop(0)
+          j = self._jobs.pop(next_job_index)
           self._lock.release()
       
       # This not only prevents high cpu usage, it also prevents DoS attacks
@@ -502,10 +547,6 @@ class queue_server:
             conn.send([result])
           else:
             conn.send([result])
-          
-        elif(msg[0] == 'status'):
-          queue_status = self._queue_worker.get_queued_jobs()
-          conn.send([(True, "Queue status has been queried."), queue_status])
           
         elif(msg[0] == 'shutdown'):
           conn.send([(True, "Queue will shutdown as soon as all running jobs have completed.")])
