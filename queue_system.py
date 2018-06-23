@@ -179,6 +179,16 @@ class job(uri_node):
   def read_uri_attribute(self, name, permissions):
     if not name in self._data.get():
       raise uri_exception_no_such_attribute()
+
+    if name == job_data.CMD:
+      return job_data.format_command(self.get_cmd())
+    if name == job_data.STDOUT_FILE:
+      return self._format_filename(self.get_stdout_file())
+    if name == job_data.STDERR_FILE:
+      return self._format_filename(self.get_stderr_file())
+    if name == job_data.NAME:
+      return self._format_string(self.get_name())
+
     return self._data.get_field(name)
 
   def write_uri_attribute(self, name, value, permissions):
@@ -302,7 +312,7 @@ class queue_worker(uri_node):
       jobs_by_name[j.get_name()] = j
     by_id = uri_directory(jobs_by_id)
     by_name = uri_directory(jobs_by_name)
-    return {"by-name" : by_name, "by-id" : by_id}
+    return {"jobs" : uri_directory({"by-name" : by_name, "by-id" : by_id})}
 
   # Returns a list that contains the available URI attributes of this node
   def uri_node_attributes(self, permissions):

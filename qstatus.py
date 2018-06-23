@@ -3,6 +3,7 @@
 import queue_system
 import sys
 import datetime
+from uri import *
 
 max_command_chars = 20
 max_dir_chars = 40
@@ -56,7 +57,13 @@ def uri_query(client, uri):
   if query_result[0][0] != True:
     print("Error:", query_result[0][1])
   else:
-    print(query_result[1])
+    response = query_result[1]
+    if uri_accessor.node_content_lister.is_listing(response):
+      content = uri_accessor.node_content_lister.extract_listing(response)
+      for x in content:
+        print(x)
+    else:
+      print(response)
   
 
 # *************************************************************************

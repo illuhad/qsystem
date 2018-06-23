@@ -72,17 +72,30 @@ class uri_accessor:
     def set_attribute(self, value, permissions):
       self._node.write_uri_attribute(self._name, value, permissions)
 
+
   class node_content_lister:
     def __init__(self, uri_node):
       self._node = uri_node
 
     def content(self, permissions):
-      result = []
+      result = ("uri-query-listing", [])
       for child in self._node.uri_children(permissions):
-        result.append(child + "/")
+        result[1].append(child + "/")
       for attribute in self._node.uri_node_attributes(permissions):
-        result.append(attribute)
+        result[1].append(attribute)
       return result
+
+    def is_listing(query_result):
+      try:
+        if query_result[0] == "uri-query-listing":
+          return True
+      except:
+        pass
+      return False
+      
+    def extract_listing(query_result):
+      return query_result[1]
+      
 
   def __init__(self,
                uri,
@@ -94,6 +107,7 @@ class uri_accessor:
 
     self._queue_system = qsystem
     self._parse(uri, permissions)
+
 
   def read(self, permissions):
     return self._getter(permissions)
