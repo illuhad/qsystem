@@ -71,7 +71,7 @@ class job_data:
     DIR: "", 
     PROCESS: None, 
     ENV: {},
-    NAME: "<unnamed>",
+    NAME: "<unnamed-%J>",
     STDOUT_FILE: "stdout_job.%J",
     STDERR_FILE: "stderr_job.%J"
   }
@@ -90,7 +90,6 @@ class job_data:
   # Fields that are allowed to be changed by the client
   # after the submission
   client_modifyable_values = set([
-    NAME,
     STDOUT_FILE,
     STDERR_FILE
   ])
@@ -200,7 +199,7 @@ class job(uri_node):
     return self._data.get_field(job_data.ID)
 
   def get_name(self):
-    return self._data.get_field(job_data.NAME)
+    return self._format_string(self._data.get_field(job_data.NAME))
 
   def get_cmd(self):
     return self._data.get_field(job_data.CMD)
@@ -295,7 +294,15 @@ class queue_worker(uri_node):
     self._run = True
     
   def uri_children(self, permissions):
-    return self._jobs
+    
+    jobs_by_id = dict()
+    jobs_by_name = dict()
+    for j in self._jobs:
+      jobs_by_id[str(j.get_id())] = j
+      jobs_by_name[j.get_name()] = j
+    by_id = uri_directory(jobs_by_id)
+    by_name = uri_directory(jobs_by_name)
+    return {"by-name" : by_name, "by-id" : by_id}
 
   # Returns a list that contains the available URI attributes of this node
   def uri_node_attributes(self, permissions):
@@ -511,6 +518,7 @@ class queue_server:
             conn.send([(False, "Attribute specified by URI does not exist.")])
           except Exception as e:
             conn.send([(False, str(e))])
+            raise
           
         else:
           print("Warning: Message is unknown, cannot be handled.")
@@ -518,7 +526,8 @@ class queue_server:
         
         conn.close()
       except Exception as e:
-        print("Warning: Exception occured during handling of message:",e)
+        print("Warning: Exception occured during handling of message:", e)
+        #raise
       
     self._listener.close()
     

@@ -113,7 +113,7 @@ class uri_accessor:
   def _parse_system_uri(self, uri_parts, permissions):
     # Start at the root
     current_node = self._queue_system
-    print("Parts:",uri_parts)
+    
     for i, part in enumerate(uri_parts):
       part = part.strip()
 
@@ -126,11 +126,10 @@ class uri_accessor:
       if i != len(uri_parts) - 1:
         investigate_attributes = False
       else:
-        # If the uri was terminated with a /, only investigate children.
-        # This is equivalent to the case where the last part of the split
-        # uri is empty.
+        # If the uri was terminated with a /, we are referring to
+        # the current node and are done.
         if part == "":
-          investigate_attributes = False
+          break
 
       part_present_in_children = part in children
       part_present_in_attributes = part in attributes
