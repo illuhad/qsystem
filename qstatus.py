@@ -7,6 +7,7 @@ import query
 from uri import *
 
 max_col_chars = 70
+max_full_status_col_chars=25
 
 def format_table(table):
   col_width = [max(len(str(x)) for x in col) for col in zip(*table)]
@@ -52,6 +53,11 @@ def priority_sort_order(job_data):
   if job_data["running"] == True:
     return float("inf")
   return job_data["effective_priority"]
+
+def get_displayed_field_name(f):
+  if f == "running":
+    return "R?"
+  return queue_system.job_data.displayed_names[f] 
   
 def full_status_report(client):
   # TODO Look in all queues
@@ -75,13 +81,14 @@ def full_status_report(client):
     
     job_status = sorted(job_status, key = lambda j : -priority_sort_order(j))
 
-    header = [queue_system.job_data.displayed_names[f] for f in queried_fields]
+    header = [get_displayed_field_name(f) for f in queried_fields]
+
     table = [header]
 
     for j in job_status:
       row = []
       for f in queried_fields:
-        row.append(j[f])
+        row.append(str(j[f])[:max_full_status_col_chars])
       table.append(row)
     print(format_table(table))
 
