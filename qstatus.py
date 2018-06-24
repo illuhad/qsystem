@@ -47,6 +47,11 @@ def detailed_job_query(client, job_id):
   for field in result:
     table.append([field, str(result[field])[:max_col_chars]])
   print(format_table(table))
+
+def priority_sort_order(job_data):
+  if job_data["running"] == True:
+    return float("inf")
+  return job_data["effective_priority"]
   
 def full_status_report(client):
   # TODO Look in all queues
@@ -58,6 +63,7 @@ def full_status_report(client):
                   queue_system.job_data.DIR]
 
   jobs = query.retrieve_all_subnodes(client, query_uri)
+  
 
   if len(jobs) == 0:
     print("No jobs in queue")
@@ -67,6 +73,8 @@ def full_status_report(client):
       jdata = query.retrieve_all_subattributes(client, query_uri + "/" + j)
       job_status.append(jdata)
     
+    job_status = sorted(job_status, key = lambda j : -priority_sort_order(j))
+
     header = [queue_system.job_data.displayed_names[f] for f in queried_fields]
     table = [header]
 

@@ -48,8 +48,8 @@ class job_data:
     ID: "job id",
     CMD: "command",
     RUNNING: "is running",
-    START_DATE: "time of execution",
-    SUBMISSION_DATE: "time of submission",
+    START_DATE: "date of execution",
+    SUBMISSION_DATE: "date of submission",
     DIR: "working directory",
     PROCESS: "PID",
     ENV: "shell environment",
@@ -66,7 +66,7 @@ class job_data:
 
   default_values = {
     ID : -1, 
-    CMD: "",
+    CMD: [],
     RUNNING: False, 
     START_DATE: None,
     SUBMISSION_DATE: None,
@@ -128,11 +128,16 @@ class job_data:
         self._data[field] = self.default_values[field]
 
   # Sanitizes the job data received from a new submission from the client
-  # to only include values that are allowed to be set by the client
+  # to only include values that are allowed to be set by the client.
+  # Also checks that all submitted fields have the correct data type
   def sanitize_new_submission(self):
     for field in self._data:
       if not field in self.submission_values:
         self._data[field] = self.default_values[field]
+      else:
+        allowed_dtype = type(self.default_values[field])
+        self._data[field] = allowed_dtype(self._data[field])
+        #print("Converting",field,"to",allowed_dtype)
 
   # Checks if the client should be allowed to modify a field
   def can_field_be_set_by_client(self, field_name):
@@ -181,12 +186,22 @@ class job(uri_node):
   def uri_node_attributes(self, permissions):
     data_attributes = list(self._data.get().keys())
     data_attributes.append("wait_time")
+    data_attributes.append("runtime")
+    data_attributes.append("effective_priority")
     return data_attributes
     
+  def get_effective_priority(self):
+    if self.is_running():
+      return float("-inf")
+    return self.get_wait_time().total_seconds() * self._data.get_field(job_data.PRIORITY)
 
   def read_uri_attribute(self, name, permissions):
     if name == "wait_time":
       return self.get_wait_time()
+    if name == "runtime":
+      return self.get_runtime()
+    if name == "effective_priority":
+      return self.get_effective_priority()
 
     if not name in self._data.get():
       raise uri_exception_no_such_attribute()
@@ -205,6 +220,10 @@ class job(uri_node):
   def write_uri_attribute(self, name, value, permissions):
     
     if name == "wait_time":
+      raise uri_exception_read_only
+    if name == "runtime":
+      raise uri_exception_read_only
+    if name == "effective_priority":
       raise uri_exception_read_only
 
     if not name in self._data.get():
@@ -241,11 +260,16 @@ class job(uri_node):
     return self._data.get_field(job_data.PRIORITY)
 
   def get_wait_time(self):
-    
-    delta = datetime.datetime.now() - self._data.get_field(job_data.SUBMISSION_DATE)
     if self.is_running():
-      delta = self._data.get_field(job_data.START_DATE) - self._data.get_field(job_data.SUBMISSION_DATE)
-    return delta.total_seconds()
+      return self._data.get_field(job_data.START_DATE) - self._data.get_field(job_data.SUBMISSION_DATE)
+    else:
+      return datetime.datetime.now() - self._data.get_field(job_data.SUBMISSION_DATE)
+
+  def get_runtime(self):
+    if self.is_running():
+      return datetime.datetime.now() - self._data.get_field(job_data.START_DATE)
+    else:
+      return datetime.timedelta()
 
   def _format_string(self, s):
     formatted = s.replace("%J", str(self.get_id()))
@@ -463,13 +487,9 @@ class queue_worker(uri_node):
   def is_running(self):
     return self._run
 
-  def _job_score(self, j):
-    if j.is_running():
-      return float("-inf")
-    return j.get_priority() * j.get_wait_time()
 
   def _find_next_job_for_execution(self):
-    return self._jobs.index(max(self._jobs, key = lambda j : self._job_score(j)))
+    return self._jobs.index(max(self._jobs, key = lambda j : j.get_effective_priority()))
 
     
   def main_loop(self):
@@ -587,13 +607,8 @@ class queue_client:
   def __init__(self):
     pass
   
-  def enqueue_job(self,command, submission_dir, environment):
+  def enqueue_job(self, jdata):
     connection = Client(socket_name)
-    
-    jdata = job_data()
-    jdata.set_field(job_data.CMD, command)
-    jdata.set_field(job_data.DIR, submission_dir)
-    jdata.set_field(job_data.ENV, environment)
 
     msg = ['enqueue', jdata.get()]
     connection.send(msg)
