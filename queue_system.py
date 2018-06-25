@@ -17,6 +17,7 @@ from uri import *
 
 socket_name = "/tmp/queue_system_socket"
 default_log_file = "/tmp/queue_system.log"
+queue_worker_log = "/tmp/queue.log"
 
 allow_cancel_running_jobs = True
 default_max_queue_length = 500
@@ -343,12 +344,13 @@ class job(uri_node):
 
 class queue_worker(uri_node):
   
-  def __init__(self):
+  def __init__(self, queue_log_file):
     self._jobs = []
     #self._current_job = None
     self._num_jobs = 0
     self._lock = threading.Lock()
     self._run = True
+    self._log = open(queue_log_file, "w", 1)
     
   def uri_children(self, permissions):
     
@@ -498,7 +500,12 @@ class queue_worker(uri_node):
       if len(self._jobs) > 0:
         next_job_index = self._find_next_job_for_execution()
         try:
-          self._jobs[next_job_index].run()
+          j = self._jobs[next_job_index]
+          self._log.write("Executing job " + str(j.get_id()) +
+                          ", Name: " + str(j.get_name()) +
+                          ", Command: " + str(j.get_cmd()) +
+                          ", Output: "+os.path.join(j.get_working_directory(),j.get_stdout_file())+"\n")
+          j.run()
         except Exception as e:
           print("An exception occured during the execution of job",self._jobs[0].get_id(),":",e)
         finally:
@@ -592,7 +599,7 @@ class queue_server:
             raise
           
         else:
-          print("Warning: Message is unknown, cannot be handled.")
+          print("Warning: Message is unknown, cannot be handled:",msg)
           conn.send([(False, "Invalid message")])
         
         conn.close()
@@ -650,7 +657,7 @@ class queue_system(uri_node):
     self._set_log_file(log_file)
 
     self._queues = dict()
-    self._queues["default"] = queue_worker()
+    self._queues["default"] = queue_worker(queue_worker_log)
     self._server = queue_server(self._queues["default"], default_max_queue_length, self)
     self._listener_thread = None
 
