@@ -501,7 +501,8 @@ class queue_worker(uri_node):
         next_job_index = self._find_next_job_for_execution()
         try:
           j = self._jobs[next_job_index]
-          self._log.write("Executing job " + str(j.get_id()) +
+          self._log.write(str(datetime.datetime.now()) +
+                          ": Executing job " + str(j.get_id()) +
                           ", Name: " + str(j.get_name()) +
                           ", Command: " + str(j.get_cmd()) +
                           ", Output: "+os.path.join(j.get_working_directory(),j.get_stdout_file())+"\n")
