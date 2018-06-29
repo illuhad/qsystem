@@ -499,6 +499,7 @@ class queue_worker(uri_node):
     while self._run:
       if len(self._jobs) > 0:
         next_job_index = self._find_next_job_for_execution()
+        j = None
         try:
           j = self._jobs[next_job_index]
           self._log.write(str(datetime.datetime.now()) +
@@ -512,8 +513,13 @@ class queue_worker(uri_node):
         finally:
           # Do not put that inside the try, because
           # the job must always be removed from the queue after it was attempted to execute it
+
+
           self._lock.acquire()
-          j = self._jobs.pop(next_job_index)
+          # If the job was cancelled, it is possible that it is not in queue anymore, so make sure it
+          # exists
+          if j in self._jobs:
+            self._jobs.pop(self._jobs.index(j))
           self._lock.release()
       
       # This not only prevents high cpu usage, it also prevents DoS attacks
